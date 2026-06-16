@@ -2,10 +2,7 @@ package com.example.waroenglegitmembership.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -19,13 +16,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.waroenglegitmembership.data.Member
-import com.example.waroenglegitmembership.data.Transaction
+import com.example.waroenglegitmembership.ui.theme.WL
 import com.example.waroenglegitmembership.viewmodel.MembershipViewModel
-import com.example.waroenglegitmembership.viewmodel.Reward
-import kotlinx.coroutines.launch
 
-// Member Detail = gabungan Membership Card, Transaction, History, Reward
-// (sesuai Navigation Structure PRD).
+/** Layar barista untuk mencatat transaksi member tertentu (FR-04). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MemberDetailScreen(
@@ -34,107 +28,167 @@ fun MemberDetailScreen(
     onBack: () -> Unit
 ) {
     val member by viewModel.getMember(memberId).collectAsState()
-    val transactions by viewModel.getTransactions(memberId).collectAsState()
-    var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Kartu", "Transaksi", "Riwayat", "Reward")
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    var notif by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = WL.Krem,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Detail Member", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = WL.Krem),
+                title = { Text("Catat Transaksi", fontWeight = FontWeight.Black) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
                     }
                 }
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Tab navigasi antar fungsi member.
-            TabRow(selectedTabIndex = selectedTab) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = { Text(title, fontSize = 13.sp) }
-                    )
+        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            member?.let { m ->
+                AddTransactionForm(
+                    member = m,
+                    onSubmit = { amount ->
+                        viewModel.addTransaction(m, amount)
+                        notif = "Transaksi tercatat! +${(amount / 10_000).toInt()} poin"
+                    }
+                )
+            }
+            TopBanner(message = notif, onDismiss = { notif = null })
+        }
+    }
+}
+
+@Composable
+private fun AddTransactionForm(member: Member, onSubmit: (Double) -> Unit) {
+    var amount by remember { mutableStateOf("") }
+    val amountValue = amount.toDoubleOrNull() ?: 0.0
+    val pointPreview = (amountValue / 10_000).toInt()
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        MemberSummaryCard(member)
+
+        Text("Formula: 1 poin = Rp10.000", color = WL.TeksRedup, fontSize = 13.sp)
+
+        WhiteTextField(
+            value = amount,
+            onValueChange = { amount = it.filter(Char::isDigit) },
+            label = "Nominal Pembelian (Rp)",
+            keyboardType = KeyboardType.Number
+        )
+
+        if (amountValue > 0) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = WL.PandanSoft)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("✨", fontSize = 24.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Member akan dapat $pointPreview poin",
+                        fontWeight = FontWeight.Bold, color = WL.Pandan)
                 }
             }
+        }
 
-            // Tampilkan konten sesuai tab. member bisa null saat loading.
-            member?.let { m ->
-                when (selectedTab) {
-                    0 -> MembershipCardTab(m)
-                    1 -> TransactionTab(m, onAdd = { amount ->
-                        viewModel.addTransaction(m, amount)
-                        scope.launch { snackbarHostState.showSnackbar("Transaksi tercatat! +${(amount/10000).toInt()} poin") }
-                    })
-                    2 -> HistoryTab(transactions)
-                    3 -> RewardTab(m, viewModel.rewards, onRedeem = { reward ->
-                        viewModel.redeemReward(m, reward) { success ->
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    if (success) "Berhasil tukar ${reward.name}! 🎉"
-                                    else "Poin tidak cukup 😔"
-                                )
-                            }
-                        }
-                    })
-                }
+        Button(
+            onClick = { onSubmit(amountValue); amount = "" },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            enabled = amountValue > 0,
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = WL.Emas, contentColor = WL.Charcoal)
+        ) {
+            Text("Simpan Transaksi", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
+}
+
+@Composable
+private fun MemberSummaryCard(member: Member) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = WL.Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MemberAvatar(member)
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(member.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                LevelBadge(member.level)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("${member.points}", fontWeight = FontWeight.Black, fontSize = 22.sp, color = WL.GulaMerah)
+                Text("poin", color = WL.TeksRedup, fontSize = 11.sp)
             }
         }
     }
 }
 
-// ---- TAB 1: Membership Card (FR-03) ----
+/** Kartu member digital (FR-03), dipakai di sisi customer. */
 @Composable
 fun MembershipCardTab(member: Member) {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Card(
             modifier = Modifier.fillMaxWidth().height(220.dp),
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
         ) {
             Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.linearGradient(
-                        listOf(Color(0xFFD4730A), Color(0xFFF5A623))
-                    )
-                ).padding(24.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Brush.linearGradient(listOf(WL.GulaMerah, WL.Klepon)))
+                    .padding(24.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween) {
-                    Row(modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Column {
                             Text("WAROENG LEGIT", color = Color.White,
                                 fontWeight = FontWeight.Black, fontSize = 16.sp)
-                            Text("Member Card", color = Color.White.copy(alpha = 0.8f),
-                                fontSize = 12.sp)
+                            Text("Member Card", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
                         }
                         Text("🍡", fontSize = 32.sp)
                     }
                     Column {
-                        Text(member.name, color = Color.White,
-                            fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                        Text("ID: WL-${member.id.toString().padStart(4, '0')}",
+                        Text(member.name, color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
+                        Text("ID: ${memberCode(member.id)}",
                             color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
-                        Row(modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Bottom) {
-                            Column {
-                                Text("LEVEL", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
-                                Text(member.level, color = Color.White,
-                                    fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = Color.White.copy(alpha = 0.25f)
+                            ) {
+                                Text(
+                                    "${levelEmoji(member.level)} ${member.level}",
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp
+                                )
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("TOTAL POIN", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
                                 Text("${member.points}", color = Color.White,
-                                    fontWeight = FontWeight.Black, fontSize = 24.sp)
+                                    fontWeight = FontWeight.Black, fontSize = 26.sp)
                             }
                         }
                     }
@@ -148,134 +202,18 @@ fun MembershipCardTab(member: Member) {
 }
 
 @Composable
-fun InfoRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color.Gray)
-        Text(value, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-// ---- TAB 2: Add Transaction (FR-04) ----
-@Composable
-fun TransactionTab(member: Member, onAdd: (Double) -> Unit) {
-    var amount by remember { mutableStateOf("") }
-    val amountValue = amount.toDoubleOrNull() ?: 0.0
-    val pointPreview = (amountValue / 10000).toInt()
-
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Catat Transaksi", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text("Formula: 1 poin = Rp10.000", color = Color.Gray, fontSize = 13.sp)
-
-        OutlinedTextField(
-            value = amount,
-            onValueChange = { amount = it.filter { c -> c.isDigit() } },
-            label = { Text("Nominal Pembelian (Rp)") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp), singleLine = true
-        )
-
-        if (amountValue > 0) {
-            Card(shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Text("Member akan dapat $pointPreview poin",
-                    modifier = Modifier.padding(16.dp), fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Button(
-            onClick = { onAdd(amountValue); amount = "" },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            enabled = amountValue > 0,
-            shape = RoundedCornerShape(12.dp)
+private fun InfoRow(label: String, value: String) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = WL.Surface),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Simpan Transaksi", fontWeight = FontWeight.Bold)
+            Text(label, color = WL.TeksRedup)
+            Text(value, fontWeight = FontWeight.SemiBold)
         }
     }
 }
-
-// ---- TAB 3: Transaction History (FR-05) ----
-@Composable
-fun HistoryTab(transactions: List<Transaction>) {
-    if (transactions.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Belum ada transaksi.", color = Color.Gray)
-        }
-        return
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(transactions) { trx ->
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text("Rp ${formatRupiah(trx.amount.toLong())}",
-                            fontWeight = FontWeight.Bold)
-                        Text(trx.date, color = Color.Gray, fontSize = 12.sp)
-                    }
-                    Text("+${trx.pointEarned} poin",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-// ---- TAB 4: Redeem Reward (FR-06) ----
-@Composable
-fun RewardTab(member: Member, rewards: List<Reward>, onRedeem: (Reward) -> Unit) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Card(shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Poin kamu:", fontWeight = FontWeight.Bold)
-                    Text("${member.points} poin", fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
-        items(rewards) { reward ->
-            val affordable = member.points >= reward.cost
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(reward.emoji, fontSize = 32.sp)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(reward.name, fontWeight = FontWeight.Bold)
-                            Text("${reward.cost} poin", color = Color.Gray, fontSize = 13.sp)
-                        }
-                    }
-                    Button(
-                        onClick = { onRedeem(reward) },
-                        enabled = affordable,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Text(if (affordable) "Tukar" else "Kurang", fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Helper format Rupiah dengan titik ribuan.
-fun formatRupiah(value: Long): String =
-    "%,d".format(value).replace(',', '.')

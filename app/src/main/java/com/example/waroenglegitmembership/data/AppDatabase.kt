@@ -1,19 +1,25 @@
 package com.example.waroenglegitmembership.data
 
 import android.content.Context
-import androidx.room.Database
-import androidx.room.Room
-import androidx.room.RoomDatabase
+import androidx.room.*
 
-// Kelas utama Room. Daftarkan semua entity & versi database di sini.
+/** Converter agar Room bisa menyimpan enum TxType sebagai teks. */
+class Converters {
+    @TypeConverter
+    fun fromTxType(value: TxType): String = value.name
+
+    @TypeConverter
+    fun toTxType(value: String): TxType = TxType.valueOf(value)
+}
+
 @Database(
     entities = [Member::class, Transaction::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
-    // Room menyediakan DAO lewat fungsi abstrak ini.
     abstract fun memberDao(): MemberDao
     abstract fun transactionDao(): TransactionDao
 
@@ -21,17 +27,16 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Singleton: hanya ada 1 koneksi database di seluruh aplikasi.
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+        fun getDatabase(context: Context): AppDatabase =
+            INSTANCE ?: synchronized(this) {
+                Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "waroeng_legit_db"
-                ).build()
-                INSTANCE = instance
-                instance
+                )
+                    .fallbackToDestructiveMigration() // reset data jika skema berubah
+                    .build()
+                    .also { INSTANCE = it }
             }
-        }
     }
 }

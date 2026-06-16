@@ -4,14 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.waroenglegitmembership.repository.MembershipRepository
 
-// Factory = "pabrik" untuk membuat ViewModel yang butuh parameter (repository).
-// Tanpa ini, ViewModel dengan parameter tidak bisa dibuat oleh sistem.
-class ViewModelFactory(private val repository: MembershipRepository) : ViewModelProvider.Factory {
+/** Factory untuk membuat ViewModel yang membutuhkan repository. */
+class ViewModelFactory(
+    private val repository: MembershipRepository
+) : ViewModelProvider.Factory {
+
+    @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(MembershipViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return MembershipViewModel(repository) as T
+        require(modelClass.isAssignableFrom(MembershipViewModel::class.java)) {
+            "Unknown ViewModel class: ${modelClass.name}"
         }
-        throw IllegalArgumentException("Unknown ViewModel class")
+        return MembershipViewModel(repository) as T
     }
 }

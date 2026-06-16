@@ -1,33 +1,71 @@
 package com.example.waroenglegitmembership.ui.screens
 
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.waroenglegitmembership.ui.theme.WL
 import kotlinx.coroutines.delay
 
-// Screen List PRD: Splash Screen — menampilkan logo.
+private const val SPLASH_DURATION_MS = 2000L
+
 @Composable
 fun SplashScreen(onTimeout: () -> Unit) {
-    // LaunchedEffect: pindah ke home setelah 2 detik.
+    var started by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (started) 1f else 0.5f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "logoScale"
+    )
+
     LaunchedEffect(Unit) {
-        delay(2000)
+        started = true
+        delay(SPLASH_DURATION_MS)
         onTimeout()
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(WL.GulaMerah, WL.Kunyit))),
+        contentAlignment = Alignment.Center
     ) {
-        Text("🍡", fontSize = 80.sp)
-        Spacer(Modifier.height(16.dp))
-        Text("Waroeng Legit", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.primary)
-        Text("Membership Card", fontSize = 14.sp, color = MaterialTheme.colorScheme.secondary)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                shape = RoundedCornerShape(32.dp),
+                color = Color.White,
+                modifier = Modifier.size(120.dp).scale(scale)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("🍡", fontSize = 64.sp)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            Text("Waroeng Legit", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.White)
+            Spacer(Modifier.height(4.dp))
+            Surface(shape = RoundedCornerShape(20.dp), color = Color.White.copy(alpha = 0.25f)) {
+                Text(
+                    text = "Membership Card",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    fontSize = 14.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
     }
 }
