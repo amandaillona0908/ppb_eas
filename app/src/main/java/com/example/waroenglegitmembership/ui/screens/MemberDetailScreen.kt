@@ -1,7 +1,10 @@
 package com.example.waroenglegitmembership.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -13,6 +16,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.waroenglegitmembership.data.Member
@@ -73,11 +80,21 @@ private fun AddTransactionForm(member: Member, onSubmit: (Double) -> Unit) {
 
         Text("Formula: 1 poin = Rp10.000", color = WL.TeksRedup, fontSize = 13.sp)
 
-        WhiteTextField(
+        // Simpan angka mentah, tampilkan dengan titik ribuan via VisualTransformation
+        // agar posisi kursor tetap benar saat mengetik.
+        OutlinedTextField(
             value = amount,
-            onValueChange = { amount = it.filter(Char::isDigit) },
-            label = "Nominal Pembelian (Rp)",
-            keyboardType = KeyboardType.Number
+            onValueChange = { input -> amount = input.filter(Char::isDigit).take(12) },
+            label = { Text("Nominal Pembelian (Rp)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            visualTransformation = ThousandSeparatorTransformation,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = WL.Surface,
+                unfocusedContainerColor = WL.Surface
+            )
         )
 
         if (amountValue > 0) {
@@ -138,7 +155,12 @@ private fun MemberSummaryCard(member: Member) {
 /** Kartu member digital (FR-03), dipakai di sisi customer. */
 @Composable
 fun MembershipCardTab(member: Member) {
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp)
+    ) {
         Card(
             modifier = Modifier.fillMaxWidth().height(220.dp),
             shape = RoundedCornerShape(24.dp),
@@ -195,6 +217,7 @@ fun MembershipCardTab(member: Member) {
                 }
             }
         }
+
         Spacer(Modifier.height(20.dp))
         InfoRow("Email", member.email)
         InfoRow("Nomor HP", member.phone)
@@ -215,5 +238,41 @@ private fun InfoRow(label: String, value: String) {
             Text(label, color = WL.TeksRedup)
             Text(value, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+
+/**
+ * Menampilkan angka dengan titik ribuan (50000 -> 50.000) tanpa mengubah
+ * nilai asli, sehingga posisi kursor tetap akurat saat mengetik.
+ */
+val ThousandSeparatorTransformation = object : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val digits = text.text
+        if (digits.isEmpty()) return TransformedText(AnnotatedString(""), OffsetMapping.Identity)
+
+        val n = digits.length
+        val sb = StringBuilder()
+        val map = IntArray(n + 1)
+        var fi = 0
+        for (i in 0 until n) {
+            if (i != 0 && (n - i) % 3 == 0) { sb.append('.'); fi++ }
+            map[i] = fi
+            sb.append(digits[i]); fi++
+        }
+        map[n] = fi
+        val formatted = sb.toString()
+
+        val mapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = map[offset.coerceIn(0, n)]
+            override fun transformedToOriginal(offset: Int): Int {
+                var digitsSeen = 0
+                for (i in 0 until offset.coerceIn(0, formatted.length)) {
+                    if (formatted[i] != '.') digitsSeen++
+                }
+                return digitsSeen
+            }
+        }
+        return TransformedText(AnnotatedString(formatted), mapping)
     }
 }

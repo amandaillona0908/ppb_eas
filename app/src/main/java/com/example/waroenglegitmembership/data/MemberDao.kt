@@ -16,7 +16,7 @@ interface MemberDao {
     suspend fun findByEmail(email: String): Member?
 
     @Insert
-    suspend fun insertMember(member: Member)
+    suspend fun insertMember(member: Member): Long
 
     @Update
     suspend fun updateMember(member: Member)

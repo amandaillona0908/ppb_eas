@@ -17,7 +17,7 @@ class MembershipRepository(
 
     suspend fun findByEmail(email: String): Member? = memberDao.findByEmail(email)
 
-    suspend fun insertMember(member: Member) = memberDao.insertMember(member)
+    suspend fun insertMember(member: Member): Long = memberDao.insertMember(member)
 
     suspend fun updateMember(member: Member) = memberDao.updateMember(member)
 

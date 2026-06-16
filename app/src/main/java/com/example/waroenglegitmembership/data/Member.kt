@@ -8,6 +8,9 @@ import androidx.room.PrimaryKey
  *  - Bronze : 0–49   (< Rp500rb)
  *  - Silver : 50–149 (Rp500rb–1,49jt)
  *  - Gold   : 150+   (Rp1,5jt+)
+ *
+ * passwordHash menyimpan hash SHA-256 dari password (bukan teks asli),
+ * sehingga password tidak pernah tersimpan dalam bentuk yang bisa dibaca.
  */
 @Entity(tableName = "members")
 data class Member(
@@ -15,6 +18,7 @@ data class Member(
     val name: String,
     val email: String,
     val phone: String,
+    val passwordHash: String = "",
     val points: Int = 0
 ) {
     val level: String

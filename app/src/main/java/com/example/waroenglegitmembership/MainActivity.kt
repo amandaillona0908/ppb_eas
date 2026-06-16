@@ -83,9 +83,10 @@ fun AppNavigation() {
         composable(Routes.ADD_MEMBER) {
             AddMemberScreen(
                 onBack = { navController.popBackStack() },
-                onSave = { name, email, phone ->
-                    viewModel.registerMember(name, email, phone)
-                    navController.popBackStack()
+                onSave = { name, email, phone, onResult ->
+                    viewModel.registerMember(name, email, phone) { defaultPass, memberId ->
+                        onResult(defaultPass, memberId)
+                    }
                 }
             )
         }

@@ -14,6 +14,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.waroenglegitmembership.ui.theme.WL
+import com.example.waroenglegitmembership.viewmodel.LoginResult
 import com.example.waroenglegitmembership.viewmodel.MembershipViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -24,6 +25,7 @@ fun CustomerLoginScreen(
     onBack: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var errorMsg by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
@@ -51,32 +53,44 @@ fun CustomerLoginScreen(
             }
             Spacer(Modifier.height(20.dp))
             Text("Masuk ke Akun Kamu", fontSize = 20.sp, fontWeight = FontWeight.Black, color = WL.Coklat)
-            Text("Pakai email yang terdaftar di kasir.", color = Color.Gray, fontSize = 14.sp)
+            Text("Pakai email & password yang terdaftar.", color = WL.TeksRedup, fontSize = 14.sp)
             Spacer(Modifier.height(24.dp))
 
             WhiteTextField(
                 value = email,
                 onValueChange = { email = it; errorMsg = "" },
                 label = "Email",
-                keyboardType = KeyboardType.Email,
+                keyboardType = KeyboardType.Email
+            )
+            Spacer(Modifier.height(12.dp))
+            WhiteTextField(
+                value = password,
+                onValueChange = { password = it; errorMsg = "" },
+                label = "Password",
+                keyboardType = KeyboardType.Password,
+                isPassword = true,
                 isError = errorMsg.isNotEmpty(),
                 errorText = errorMsg
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(20.dp))
 
             Button(
                 onClick = {
                     isLoading = true
-                    viewModel.loginByEmail(email) { member ->
+                    viewModel.login(email, password) { result ->
                         isLoading = false
-                        if (member != null) onLoginSuccess(member.id)
-                        else errorMsg = "Email belum terdaftar. Minta barista daftarkan dulu ya!"
+                        when (result) {
+                            is LoginResult.Success -> onLoginSuccess(result.member.id)
+                            LoginResult.WrongPassword -> errorMsg = "Password salah."
+                            LoginResult.NotFound ->
+                                errorMsg = "Email belum terdaftar. Minta barista daftarkan dulu ya!"
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                enabled = email.isNotBlank() && !isLoading,
+                enabled = email.isNotBlank() && password.isNotBlank() && !isLoading,
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = WL.Pandan)
+                colors = ButtonDefaults.buttonColors(containerColor = WL.Pandan, contentColor = WL.Charcoal)
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)

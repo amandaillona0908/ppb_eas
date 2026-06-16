@@ -3,7 +3,13 @@ package com.example.waroenglegitmembership.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,8 +32,6 @@ fun levelEmoji(level: String): String = when (level) {
     "Silver" -> "🥈"
     else -> "🥉"
 }
-
-fun formatRupiah(value: Long): String = "%,d".format(value).replace(',', '.')
 
 fun memberCode(id: Int): String = "WL-${id.toString().padStart(4, '0')}"
 
@@ -131,8 +135,10 @@ fun WhiteTextField(
         androidx.compose.ui.text.input.KeyboardType.Text,
     enabled: Boolean = true,
     isError: Boolean = false,
-    errorText: String = ""
+    errorText: String = "",
+    isPassword: Boolean = false
 ) {
+    var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -140,6 +146,16 @@ fun WhiteTextField(
         enabled = enabled,
         singleLine = true,
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
+        visualTransformation = if (isPassword && !visible)
+            androidx.compose.ui.text.input.PasswordVisualTransformation()
+        else androidx.compose.ui.text.input.VisualTransformation.None,
+        trailingIcon = {
+            if (isPassword) {
+                TextButton(onClick = { visible = !visible }) {
+                    Text(if (visible) "🙈" else "👁️", fontSize = 16.sp)
+                }
+            }
+        },
         isError = isError,
         supportingText = { if (isError && errorText.isNotEmpty()) Text(errorText, color = Color.Red) },
         modifier = modifier.fillMaxWidth(),
@@ -191,19 +207,17 @@ fun TopBanner(
     autoDismissMillis: Long = 2500
 ) {
     // Hilangkan otomatis setelah beberapa detik.
-    androidx.compose.runtime.LaunchedEffect(message) {
+    LaunchedEffect(message) {
         if (message != null) {
-            kotlinx.coroutines.delay(autoDismissMillis)
+            delay(autoDismissMillis)
             onDismiss()
         }
     }
 
-    androidx.compose.animation.AnimatedVisibility(
+    AnimatedVisibility(
         visible = message != null,
-        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) +
-                androidx.compose.animation.fadeIn(),
-        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) +
-                androidx.compose.animation.fadeOut(),
+        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
         modifier = Modifier.fillMaxWidth()
     ) {
         Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -221,7 +235,7 @@ fun TopBanner(
                     Spacer(Modifier.width(12.dp))
                     Text(
                         text = message ?: "",
-                        color = androidx.compose.ui.graphics.Color.White,
+                        color = Color.White,
                         fontWeight = FontWeight.Medium,
                         fontSize = 14.sp,
                         modifier = Modifier.weight(1f)

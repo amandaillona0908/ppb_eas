@@ -4,7 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
@@ -39,8 +41,11 @@ fun CustomerDashboardScreen(
     var tab by remember { mutableStateOf(CustomerTab.HOME) }
     var sub by remember { mutableStateOf<CustomerSub?>(null) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var notif by remember { mutableStateOf<String?>(null) }
 
-    // Tombol back HP: bertingkat — sub-screen & tab lain balik ke Home dulu,
+    fun toast(msg: String) { notif = msg }
+
+    // Tombol back HP bertingkat: sub-screen & tab lain balik ke Home dulu,
     // baru di Home munculkan dialog konfirmasi keluar.
     BackHandler {
         when {
@@ -49,9 +54,6 @@ fun CustomerDashboardScreen(
             else -> showLogoutDialog = true
         }
     }
-    var notif by remember { mutableStateOf<String?>(null) }
-
-    fun toast(msg: String) { notif = msg }
 
     if (showLogoutDialog) {
         LogoutConfirmDialog(
@@ -72,8 +74,7 @@ fun CustomerDashboardScreen(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
                         }
                     }
-                },
-                actions = {}
+                }
             )
         },
         bottomBar = {
@@ -102,7 +103,6 @@ fun CustomerDashboardScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            // Konten utama
             member?.let { m ->
                 when (sub) {
                     CustomerSub.CARD -> MembershipCardTab(m)
@@ -114,23 +114,30 @@ fun CustomerDashboardScreen(
                     null -> when (tab) {
                         CustomerTab.HOME -> HomeTab(
                             member = m,
+                            usingDefaultPassword = viewModel.isDefaultPassword(m),
                             onOpenCard = { sub = CustomerSub.CARD },
                             onOpenRiwayat = { tab = CustomerTab.RIWAYAT },
-                            onOpenReward = { sub = CustomerSub.REWARD }
+                            onOpenReward = { sub = CustomerSub.REWARD },
+                            onGoProfile = { tab = CustomerTab.PROFILE }
                         )
                         CustomerTab.RIWAYAT -> HistoryTab(transactions)
                         CustomerTab.PROFILE -> ProfileTab(
                             member = m,
+                            usingDefaultPassword = viewModel.isDefaultPassword(m),
+                            verifyCurrentPassword = { pass -> viewModel.verifyPassword(m, pass) },
                             onSave = { name, email, phone ->
                                 viewModel.updateProfile(m, name, email, phone)
                                 toast("Profil diperbarui!")
+                            },
+                            onChangePassword = { newPass ->
+                                viewModel.updatePassword(m, newPass)
+                                toast("Password berhasil diganti!")
                             },
                             onLogout = { showLogoutDialog = true }
                         )
                     }
                 }
             }
-            // Banner notifikasi (digambar paling akhir = tampil di atas konten)
             TopBanner(message = notif, onDismiss = { notif = null })
         }
     }
@@ -149,9 +156,11 @@ private fun currentTitle(tab: CustomerTab, sub: CustomerSub?): String = when {
 @Composable
 private fun HomeTab(
     member: Member,
+    usingDefaultPassword: Boolean,
     onOpenCard: () -> Unit,
     onOpenRiwayat: () -> Unit,
-    onOpenReward: () -> Unit
+    onOpenReward: () -> Unit,
+    onGoProfile: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -161,6 +170,9 @@ private fun HomeTab(
         item {
             Text("Hai, ${member.name}! 👋", fontSize = 24.sp, fontWeight = FontWeight.Black, color = WL.Coklat)
             Text("Mau jajan apa hari ini?", color = WL.TeksRedup)
+        }
+        if (usingDefaultPassword) {
+            item { ChangePasswordReminder(onGoProfile) }
         }
         item { PointCard(member) }
         item {
@@ -230,73 +242,190 @@ private fun MenuRow(emoji: String, title: String, subtitle: String, bg: Color, o
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChangePasswordReminder(onGoProfile: () -> Unit) {
+    Card(
+        onClick = onGoProfile,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = WL.KunyitSoft),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("🔒", fontSize = 22.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Ganti password kamu", fontWeight = FontWeight.Bold, color = WL.Coklat, fontSize = 14.sp)
+                Text("Kamu masih pakai password default dari kasir. Tap untuk ganti.",
+                    color = WL.TeksRedup, fontSize = 12.sp)
+            }
+            Text("›", fontSize = 24.sp, color = WL.TeksRedup)
+        }
+    }
+}
+
 // ---------- Tab Profil ----------
 
 @Composable
-private fun ProfileTab(member: Member, onSave: (String, String, String) -> Unit, onLogout: () -> Unit) {
-    var name by remember(member.id) { mutableStateOf(member.name) }
-    var email by remember(member.id) { mutableStateOf(member.email) }
-    var phone by remember(member.id) { mutableStateOf(member.phone) }
+private fun ProfileTab(
+    member: Member,
+    usingDefaultPassword: Boolean,
+    verifyCurrentPassword: (String) -> Boolean,
+    onSave: (String, String, String) -> Unit,
+    onChangePassword: (String) -> Unit,
+    onLogout: () -> Unit
+) {
     var editing by remember { mutableStateOf(false) }
+    var name by remember(member.id, editing) { mutableStateOf(member.name) }
+    var email by remember(member.id, editing) { mutableStateOf(member.email) }
+    var phone by remember(member.id, editing) { mutableStateOf(member.phone) }
+    var currentPass by remember(editing) { mutableStateOf("") }
+    var newPass by remember(editing) { mutableStateOf("") }
+    var confirmPass by remember(editing) { mutableStateOf("") }
+
+    val wantChangePass = newPass.isNotEmpty() || confirmPass.isNotEmpty()
+    val passTooShort = newPass.isNotEmpty() && newPass.length < 4
+    val passMismatch = confirmPass.isNotEmpty() && newPass != confirmPass
+    // Password lama wajib & benar HANYA jika member sudah pernah ganti dari default.
+    val needCurrent = wantChangePass && !usingDefaultPassword
+    val currentWrong = needCurrent && currentPass.isNotEmpty() && !verifyCurrentPassword(currentPass)
+    val currentOk = !needCurrent || (currentPass.isNotEmpty() && verifyCurrentPassword(currentPass))
+    val passOk = !wantChangePass || (newPass.length >= 4 && newPass == confirmPass && currentOk)
+    val formValid = name.isNotBlank() && email.isNotBlank() && phone.isNotBlank() && passOk
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(8.dp))
-        MemberAvatar(member, size = 90)
-        Spacer(Modifier.height(8.dp))
-        LevelBadge(member.level)
-        Text("ID: ${memberCode(member.id)}", color = WL.TeksRedup, fontSize = 13.sp,
-            modifier = Modifier.padding(top = 4.dp))
-        Spacer(Modifier.height(24.dp))
+        // Header card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = WL.Surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                MemberAvatar(member, size = 84)
+                Spacer(Modifier.height(12.dp))
+                Text(member.name, fontWeight = FontWeight.Black, fontSize = 20.sp, color = WL.Coklat)
+                Spacer(Modifier.height(6.dp))
+                LevelBadge(member.level)
+                Spacer(Modifier.height(8.dp))
+                Surface(shape = RoundedCornerShape(12.dp), color = WL.Krem) {
+                    Text(
+                        "ID: ${memberCode(member.id)}",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        color = WL.TeksRedup, fontSize = 13.sp, fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
 
-        WhiteTextField(name, { name = it }, "Nama", enabled = editing)
-        Spacer(Modifier.height(12.dp))
-        WhiteTextField(email, { email = it }, "Email", enabled = editing, keyboardType = KeyboardType.Email)
-        Spacer(Modifier.height(12.dp))
-        WhiteTextField(phone, { phone = it.filter(Char::isDigit) }, "Nomor HP",
-            enabled = editing, keyboardType = KeyboardType.Phone)
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
 
         if (editing) {
+            // ---- Mode edit: semua dalam satu form ----
+            WhiteTextField(name, { name = it }, "Nama")
+            Spacer(Modifier.height(12.dp))
+            WhiteTextField(email, { email = it }, "Email", keyboardType = KeyboardType.Email)
+            Spacer(Modifier.height(12.dp))
+            WhiteTextField(phone, { phone = it.filter(Char::isDigit) }, "Nomor HP", keyboardType = KeyboardType.Phone)
+
+            Spacer(Modifier.height(20.dp))
+            // Bagian ganti password (opsional)
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("🔑", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
+                Text("Ubah Password (opsional)", fontWeight = FontWeight.Bold, color = WL.Coklat, fontSize = 14.sp)
+            }
+            Text("Kosongkan jika tidak ingin mengganti.", color = WL.TeksRedup, fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 10.dp))
+            // Password lama hanya diminta jika sudah pernah ganti dari default.
+            if (!usingDefaultPassword) {
+                WhiteTextField(
+                    currentPass, { currentPass = it }, "Password Saat Ini", isPassword = true,
+                    isError = currentWrong, errorText = "Password salah"
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+            WhiteTextField(
+                newPass, { newPass = it }, "Password Baru", isPassword = true,
+                isError = passTooShort, errorText = "Minimal 4 karakter"
+            )
+            Spacer(Modifier.height(12.dp))
+            WhiteTextField(
+                confirmPass, { confirmPass = it }, "Konfirmasi Password", isPassword = true,
+                isError = passMismatch, errorText = "Password tidak sama"
+            )
+
+            Spacer(Modifier.height(24.dp))
             Button(
-                onClick = { onSave(name, email, phone); editing = false },
+                onClick = {
+                    onSave(name, email, phone)
+                    if (wantChangePass) onChangePassword(newPass)
+                    editing = false
+                },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
-                enabled = name.isNotBlank() && email.isNotBlank() && phone.isNotBlank(),
+                enabled = formValid,
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = WL.Emas, contentColor = WL.Charcoal)
+                colors = ButtonDefaults.buttonColors(containerColor = WL.GulaMerah, contentColor = Color.White)
             ) { Text("Simpan Perubahan", fontWeight = FontWeight.Bold) }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = {
-                    name = member.name; email = member.email; phone = member.phone; editing = false
-                },
-                modifier = Modifier.fillMaxWidth(),
+                onClick = { editing = false },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(16.dp)
             ) { Text("Batal") }
         } else {
+            // ---- Mode lihat ----
+            ProfileInfoRow("📧", "Email", member.email)
+            Spacer(Modifier.height(10.dp))
+            ProfileInfoRow("📱", "Nomor HP", member.phone)
+            Spacer(Modifier.height(24.dp))
             Button(
                 onClick = { editing = true },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = WL.Emas, contentColor = WL.Charcoal)
+                colors = ButtonDefaults.buttonColors(containerColor = WL.GulaMerah, contentColor = Color.White)
             ) { Text("Edit Profil", fontWeight = FontWeight.Bold) }
-
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onLogout,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ExitToApp,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = WL.GulaMerah
-                )
+                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null,
+                    modifier = Modifier.size(18.dp), tint = WL.GulaMerah)
                 Spacer(Modifier.width(8.dp))
                 Text("Keluar", color = WL.GulaMerah, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileInfoRow(emoji: String, label: String, value: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = WL.Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = RoundedCornerShape(12.dp), color = WL.Krem) {
+                Text(emoji, fontSize = 20.sp, modifier = Modifier.padding(8.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(label, color = WL.TeksRedup, fontSize = 12.sp)
+                Text(value, fontWeight = FontWeight.SemiBold, color = WL.Coklat)
             }
         }
     }
