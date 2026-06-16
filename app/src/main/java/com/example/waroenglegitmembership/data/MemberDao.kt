@@ -12,6 +12,9 @@ interface MemberDao {
     @Query("SELECT * FROM members WHERE id = :memberId")
     fun getMemberById(memberId: Int): Flow<Member?>
 
+    @Query("SELECT * FROM members WHERE id = :memberId")
+    suspend fun getMemberOnce(memberId: Int): Member?
+
     @Query("SELECT * FROM members WHERE email = :email LIMIT 1")
     suspend fun findByEmail(email: String): Member?
 
@@ -26,4 +29,10 @@ interface MemberDao {
 
     @Query("UPDATE members SET points = :newPoints WHERE id = :memberId")
     suspend fun updatePoints(memberId: Int, newPoints: Int)
+
+    @Query("UPDATE members SET level = :level WHERE id = :memberId")
+    suspend fun updateLevel(memberId: Int, level: String)
+
+    @Query("UPDATE members SET passwordHash = :hash WHERE id = :memberId")
+    suspend fun updatePasswordHash(memberId: Int, hash: String)
 }

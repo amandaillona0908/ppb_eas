@@ -22,7 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.waroenglegitmembership.data.LevelSystem
 import com.example.waroenglegitmembership.data.Member
+import com.example.waroenglegitmembership.data.TxType
 import com.example.waroenglegitmembership.ui.theme.WL
 import com.example.waroenglegitmembership.viewmodel.MembershipViewModel
 
@@ -114,6 +116,7 @@ fun CustomerDashboardScreen(
                     null -> when (tab) {
                         CustomerTab.HOME -> HomeTab(
                             member = m,
+                            transactions = transactions,
                             usingDefaultPassword = viewModel.isDefaultPassword(m),
                             onOpenCard = { sub = CustomerSub.CARD },
                             onOpenRiwayat = { tab = CustomerTab.RIWAYAT },
@@ -156,12 +159,17 @@ private fun currentTitle(tab: CustomerTab, sub: CustomerSub?): String = when {
 @Composable
 private fun HomeTab(
     member: Member,
+    transactions: List<com.example.waroenglegitmembership.data.Transaction>,
     usingDefaultPassword: Boolean,
     onOpenCard: () -> Unit,
     onOpenRiwayat: () -> Unit,
     onOpenReward: () -> Unit,
     onGoProfile: () -> Unit
 ) {
+    val purchases = transactions.count { it.type == TxType.PURCHASE }
+    val redeems = transactions.count { it.type == TxType.REDEEM }
+    val missions = LevelSystem.missions(member.level, member.points, purchases, redeems, !usingDefaultPassword)
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -175,6 +183,7 @@ private fun HomeTab(
             item { ChangePasswordReminder(onGoProfile) }
         }
         item { PointCard(member) }
+        item { MissionCard(member.level, missions) }
         item {
             Text("Menu", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 4.dp))
         }
@@ -261,6 +270,79 @@ private fun ChangePasswordReminder(onGoProfile: () -> Unit) {
                     color = WL.TeksRedup, fontSize = 12.sp)
             }
             Text("›", fontSize = 24.sp, color = WL.TeksRedup)
+        }
+    }
+}
+
+@Composable
+private fun MissionCard(level: String, missions: List<LevelSystem.Mission>) {
+    val next = LevelSystem.nextLevel(level)
+    val progress = LevelSystem.progress(missions)
+    val doneCount = missions.count { it.done }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = WL.Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(levelEmoji(level), fontSize = 22.sp)
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    if (next != null) {
+                        Text("Misi menuju $next", fontWeight = FontWeight.Black, color = WL.Coklat, fontSize = 16.sp)
+                        Text("$doneCount/${missions.size} misi selesai", color = WL.TeksRedup, fontSize = 12.sp)
+                    } else {
+                        Text("Level Tertinggi! 🎉", fontWeight = FontWeight.Black, color = WL.Coklat, fontSize = 16.sp)
+                        Text("Kamu sudah mencapai level Gold", color = WL.TeksRedup, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            if (missions.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                // Progress bar
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(8.dp)
+                        .background(WL.GulaSoft, RoundedCornerShape(4.dp))
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(progress).height(8.dp)
+                            .background(WL.GulaMerah, RoundedCornerShape(4.dp))
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                missions.forEach { m -> MissionRow(m) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MissionRow(mission: LevelSystem.Mission) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Tanda centang / kosong
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (mission.done) WL.PandanSoft else WL.Krem,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(if (mission.done) "✓" else "•",
+                    fontWeight = FontWeight.Black,
+                    color = if (mission.done) WL.Pandan else WL.TeksRedup,
+                    fontSize = 16.sp)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(mission.title, fontWeight = FontWeight.Bold, color = WL.Coklat, fontSize = 14.sp)
+            Text(mission.progress, color = WL.TeksRedup, fontSize = 12.sp)
         }
     }
 }

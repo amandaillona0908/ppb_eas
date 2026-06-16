@@ -2,6 +2,7 @@ package com.example.waroenglegitmembership.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.waroenglegitmembership.data.LevelSystem
 import com.example.waroenglegitmembership.data.Member
 import com.example.waroenglegitmembership.data.Transaction
 import com.example.waroenglegitmembership.data.TxType
@@ -43,7 +44,7 @@ class MembershipViewModel(private val repository: MembershipRepository) : ViewMo
     /**
      * Daftarkan member baru. Password default dibuat otomatis dari ID
      * (mis. "waroeng1"), lalu dikirim balik lewat onResult agar barista
-     * bisa memberitahukannya ke customer.
+     * bisa memberitahukannya ke customer. Level awal selalu Bronze.
      */
     fun registerMember(
         name: String,
@@ -51,49 +52,29 @@ class MembershipViewModel(private val repository: MembershipRepository) : ViewMo
         phone: String,
         onResult: (defaultPassword: String, memberId: Int) -> Unit
     ) = viewModelScope.launch {
-        // Simpan dulu untuk mendapat ID, baru set password default berbasis ID.
         val newId = repository.insertMember(
             Member(name = name, email = email, phone = phone, passwordHash = "")
         ).toInt()
         val defaultPass = PasswordHasher.defaultPassword(newId)
-        repository.updateMember(
-            Member(
-                id = newId, name = name, email = email, phone = phone,
-                passwordHash = PasswordHasher.hash(defaultPass)
-            )
-        )
+        repository.updatePasswordHash(newId, PasswordHasher.hash(defaultPass))
         onResult(defaultPass, newId)
     }
-
-    /** True jika member masih memakai password default (belum diganti). */
-    fun isDefaultPassword(member: Member): Boolean =
-        PasswordHasher.verify(PasswordHasher.defaultPassword(member.id), member.passwordHash)
-
-    /** Verifikasi apakah [password] cocok dengan password member saat ini. */
-    fun verifyPassword(member: Member, password: String): Boolean =
-        PasswordHasher.verify(password, member.passwordHash)
 
     fun updateProfile(member: Member, name: String, email: String, phone: String) =
         viewModelScope.launch {
             repository.updateMember(member.copy(name = name, email = email, phone = phone))
         }
 
-    /** Ganti password member. Password baru di-hash sebelum disimpan. */
+    /** Ganti password member, lalu cek apakah misi level terpenuhi. */
     fun updatePassword(member: Member, newPassword: String) = viewModelScope.launch {
-        repository.updateMember(member.copy(passwordHash = PasswordHasher.hash(newPassword)))
+        repository.updatePasswordHash(member.id, PasswordHasher.hash(newPassword))
+        refreshLevel(member.id)
     }
 
     fun deleteMember(member: Member) = viewModelScope.launch {
         repository.deleteMember(member)
     }
 
-    /**
-     * Login customer: cari member by email lalu verifikasi password.
-     * Hasil:
-     *  - LoginResult.Success(member) jika email & password cocok
-     *  - LoginResult.WrongPassword  jika email ada tapi password salah
-     *  - LoginResult.NotFound       jika email tidak terdaftar
-     */
     fun login(email: String, password: String, onResult: (LoginResult) -> Unit) =
         viewModelScope.launch {
             val member = repository.findByEmail(email.trim())
@@ -105,7 +86,13 @@ class MembershipViewModel(private val repository: MembershipRepository) : ViewMo
             onResult(result)
         }
 
-    /** Catat pembelian + tambah poin (1 poin = Rp10.000). */
+    fun isDefaultPassword(member: Member): Boolean =
+        PasswordHasher.verify(PasswordHasher.defaultPassword(member.id), member.passwordHash)
+
+    fun verifyPassword(member: Member, password: String): Boolean =
+        PasswordHasher.verify(password, member.passwordHash)
+
+    /** Catat pembelian + tambah poin, lalu cek kenaikan level. */
     fun addTransaction(member: Member, amount: Double) = viewModelScope.launch {
         val pointEarned = (amount / RUPIAH_PER_POINT).toInt()
         repository.insertTransaction(
@@ -118,9 +105,10 @@ class MembershipViewModel(private val repository: MembershipRepository) : ViewMo
             )
         )
         repository.updatePoints(member.id, member.points + pointEarned)
+        refreshLevel(member.id)
     }
 
-    /** Tukar reward: kurangi poin + catat sebagai REDEEM. */
+    /** Tukar reward: kurangi poin + catat REDEEM, lalu cek level. */
     fun redeemReward(member: Member, reward: Reward, onResult: (Boolean) -> Unit) =
         viewModelScope.launch {
             if (member.points >= reward.cost) {
@@ -134,11 +122,26 @@ class MembershipViewModel(private val repository: MembershipRepository) : ViewMo
                     )
                 )
                 repository.updatePoints(member.id, member.points - reward.cost)
+                refreshLevel(member.id)
                 onResult(true)
             } else {
                 onResult(false)
             }
         }
+
+    /**
+     * Hitung ulang level member berdasar misi yang sudah diselesaikan,
+     * lalu simpan jika naik. Dipanggil setelah transaksi/redeem/ganti password.
+     */
+    private suspend fun refreshLevel(memberId: Int) {
+        val m = repository.getMemberOnce(memberId) ?: return
+        val purchases = repository.countPurchases(memberId)
+        val redeems = repository.countRedeems(memberId)
+        val passwordChanged =
+            !PasswordHasher.verify(PasswordHasher.defaultPassword(m.id), m.passwordHash)
+        val newLevel = LevelSystem.computeLevel(m.level, m.points, purchases, redeems, passwordChanged)
+        if (newLevel != m.level) repository.updateLevel(memberId, newLevel)
+    }
 
     private fun now(): String =
         SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id")).format(Date())

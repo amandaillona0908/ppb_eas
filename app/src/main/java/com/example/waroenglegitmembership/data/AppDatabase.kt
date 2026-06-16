@@ -14,7 +14,7 @@ class Converters {
 
 @Database(
     entities = [Member::class, Transaction::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
