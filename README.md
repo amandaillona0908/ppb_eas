@@ -170,12 +170,3 @@ cd ppb_eas
 - Password menggunakan SHA-256 (disederhanakan untuk kebutuhan lokal)
 
 ---
-
-## Pengembang
-
-| Info | Detail |
-|---|---|
-| Nama | Hilmi |
-| Mata Kuliah | Pemrograman Perangkat Bergerak |
-| Semester | 8 |
-| Tahun | 2025/2026 |
